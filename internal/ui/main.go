@@ -1,8 +1,13 @@
 package ui
 
 import (
+	"errors"
 	"go-crypt-message/internal/core/users"
+	"go-crypt-message/pkg/password"
 	manager "go-crypt-message/pkg/rsa"
+	"io/ioutil"
+	"os"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -15,11 +20,45 @@ const (
 	SOME_MESSAGE = 0
 )
 
+func getPassword() string {
+	if _, err := os.Stat("./etc/hash"); errors.Is(err, os.ErrNotExist) {
+		return ""
+	} else {
+		b, _ := ioutil.ReadFile("./etc/hash")
+		return string(b)
+	}
+}
+
 func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 	app := tview.NewApplication()
 	box := tview.NewFlex()
+	pages := tview.NewPages()
 
 	column := 0
+
+	inputPassword := tview.NewInputField().
+		SetLabel("Enter a password: ").
+		SetFieldWidth(10)
+	inputPassword.
+		SetDoneFunc(func(key tcell.Key) {
+			if key == tcell.KeyEnter {
+				rawPass := inputPassword.GetText()
+				pass := getPassword()
+				if pass == "" {
+					salt, p := password.Encode(rawPass, nil)
+					ioutil.WriteFile("./etc/hash", []byte(salt+" "+p), os.ModePerm)
+				} else {
+					slicePass := strings.Split(pass, " ")
+					if password.Verify(rawPass, slicePass[0], slicePass[1], nil) {
+						pages.SwitchToPage("main")
+					} else {
+						app.Stop()
+					}
+				}
+			}
+		})
+
+	pages.AddPage("login", inputPassword, true, true)
 
 	btnGetMyPublicKey := tview.NewButton("Save public key in clipboard")
 	btnGetMyPublicKey.SetTitleAlign(1)
@@ -28,8 +67,6 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 	inputText := tview.NewTextArea().SetPlaceholder("Input text...")
 	tableMessage := tview.NewTable().
 		SetBorders(false).SetFixed(2, 10)
-
-	pages := tview.NewPages()
 
 	userPress := ""
 
@@ -132,12 +169,12 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 				tview.NewFlex().SetDirection(tview.FlexColumn).
 					AddItem(tview.NewFlex().SetDirection(tview.FlexRow).AddItem(btnGetMyPublicKey, 0, 1, false).
 						AddItem(flexUserList, 0, 5, false), 0, 1, false).
-					AddItem(tview.NewFlex().SetDirection(tview.FlexRow).AddItem(lableUserName, 0, 1, false).AddItem(tableMessage, 0, 1, false), 0, 1, false),
+					AddItem(tview.NewFlex().SetDirection(tview.FlexRow).AddItem(lableUserName, 0, 1, false).AddItem(tableMessage, 0, 6, false), 0, 1, false),
 				0, 3, false).
 			AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).AddItem(inputText, 0, 5, true).AddItem(btnEncrypt, 0, 1, false).AddItem(btnCrypto, 0, 1, false), 0, 1, true), 0, 1, false)
 
 	pages.AddPage("main", box, true, true)
-	pages.SwitchToPage("main")
+	pages.SwitchToPage("login")
 
 	if err := app.SetRoot(pages, true).EnableMouse(true).SetFocus(pages).Run(); err != nil {
 		panic(err)
