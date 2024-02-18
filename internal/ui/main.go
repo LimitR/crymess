@@ -39,6 +39,16 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 			listUser.AddItem(n, "", 20, func() {
 				lableUserName.SetText(n)
 				userPress = n
+				usr := userManager.UserList[userPress]
+				column = 0
+				for _, msg := range usr.MessageList {
+					column += 1
+					if msg.MyMessage {
+						tableMessage.SetCell(column, MY_MESSAGE, tview.NewTableCell(msg.Text))
+					} else {
+						tableMessage.SetCell(column, SOME_MESSAGE, tview.NewTableCell(msg.Text))
+					}
+				}
 			})
 		}
 	}
@@ -58,7 +68,7 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 		AddButton("Save", func() {
 			if nameUser != "" && pubKey != "" {
 				u := users.NewUser(nameUser, pubKey)
-				userManager.UserList[nameUser] = u
+				userManager.UserList[nameUser] = &u
 				go func() {
 					u.Save()
 				}()
@@ -91,24 +101,29 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 	})
 
 	btnEncrypt.SetSelectedFunc(func() {
-		msg := inputText.GetText()
-		usr := userManager.UserList[userPress]
-		newMsg := usr.Encrypt(msg)
-		clipboard.Write(clipboard.FmtText, []byte(newMsg))
+		if userPress != "" {
+			msg := inputText.GetText()
+			usr := userManager.UserList[userPress]
+			newMsg := usr.Encrypt(msg)
+			usr.AddMessage(msg, true)
+			clipboard.Write(clipboard.FmtText, []byte(newMsg))
 
-		inputText.SetText("", true)
-		column += 1
-		tableMessage.SetCell(column, MY_MESSAGE, tview.NewTableCell(msg))
+			inputText.SetText("", true)
+			column += 1
+			tableMessage.SetCell(column, MY_MESSAGE, tview.NewTableCell(msg))
+		}
 	})
 	btnCrypto.SetSelectedFunc(func() {
-		msg := inputText.GetText()
-		inputText.SetText("", true)
-		column += 1
-		newMsg := manager.Decrypt(msg)
-		// usr := userManager.UserList[userPress]
-		// usr.AddMessage(msg)
-		tableMessage.SetCell(column, SOME_MESSAGE, tview.NewTableCell(userPress+": "+newMsg))
-		tableMessage.Draw(tcell.NewSimulationScreen(""))
+		if userPress != "" {
+			msg := inputText.GetText()
+			inputText.SetText("", true)
+			column += 1
+			newMsg := manager.Decrypt(msg)
+			usr := userManager.UserList[userPress]
+			usr.AddMessage(newMsg, false)
+			tableMessage.SetCell(column, SOME_MESSAGE, tview.NewTableCell(userPress+": "+newMsg))
+			tableMessage.Draw(tcell.NewSimulationScreen(""))
+		}
 	})
 
 	box.AddItem(

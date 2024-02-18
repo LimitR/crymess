@@ -13,12 +13,12 @@ const (
 )
 
 type UserManager struct {
-	UserList map[string]User
+	UserList map[string]*User
 }
 
 func NewUserManager() *UserManager {
 	return &UserManager{
-		UserList: make(map[string]User),
+		UserList: make(map[string]*User),
 	}
 }
 
@@ -67,8 +67,16 @@ func (u *UserManager) Load() error {
 
 		user.loadMessage("./" + DIR + "/" + MESSAGE_DIR + "/" + name + ".message")
 
-		u.UserList[name] = user
+		u.UserList[name] = &user
 	}
 
 	return nil
+}
+
+func (u *UserManager) Save() error {
+	var err error
+	for _, user := range u.UserList {
+		err = user.Save()
+	}
+	return err
 }

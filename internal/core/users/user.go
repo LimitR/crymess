@@ -11,21 +11,24 @@ import (
 	"encoding/pem"
 	"io/ioutil"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
 type Message struct {
-	Load      bool
+	MyMessage bool
 	Id        string
 	Text      string
 	TimeStamp time.Time
 }
 
 type User struct {
-	Name         string
-	PasswordHash string
-	MessageList  []*Message
-	PubKey       rsa.PublicKey
+	Name          string
+	PasswordHash  string
+	MessageList   []*Message
+	MyMessageList []*Message
+	PubKey        rsa.PublicKey
 }
 
 func NewUser(name string, pubKey string) User {
@@ -63,14 +66,38 @@ func (u *User) loadMessage(filePath string) {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		u.MessageList = append(u.MessageList, &Message{
-			Text: scanner.Text(),
-		})
+		txt := scanner.Text()
+		sliceText := strings.Split(txt, " ")
+		unixNum, _ := strconv.ParseInt(sliceText[0], 10, 64)
+		if sliceText[1] == "my" {
+			u.MessageList = append(u.MessageList, &Message{
+				Text:      getNormalString(sliceText),
+				TimeStamp: time.Unix(unixNum, 0),
+				MyMessage: true,
+			})
+		} else {
+			u.MessageList = append(u.MessageList, &Message{
+				Text:      getNormalString(sliceText),
+				TimeStamp: time.Unix(unixNum, 0),
+				MyMessage: false,
+			})
+		}
 	}
-
 	if err := scanner.Err(); err != nil {
 		panic(err)
 	}
+}
+
+func getNormalString(txt []string) string {
+	res := ""
+
+	for i, s := range txt {
+		if i > 1 {
+			res += s
+		}
+	}
+
+	return res
 }
 
 func (u *User) Save() error {
@@ -95,15 +122,23 @@ func (u *User) Save() error {
 		return err
 	}
 
-	f, _ := os.Create("./" + DIR + "/" + MESSAGE_DIR + "/" + u.Name + ".message")
-	defer f.Close()
-
-	w := bufio.NewWriter(f)
+	file := []byte{}
 
 	for _, msg := range u.MessageList {
-		w.WriteString(msg.Text + "\n")
+		file = append(file, []byte(strconv.Itoa(int(msg.TimeStamp.Unix())))...)
+		file = append(file, []byte(" ")...)
+		if msg.MyMessage {
+			file = append(file, []byte("my")...)
+			file = append(file, []byte(" ")...)
+		} else {
+			file = append(file, []byte("you")...)
+			file = append(file, []byte(" ")...)
+		}
+		file = append(file, []byte(msg.Text)...)
+		file = append(file, []byte("\n")...)
 	}
 
+	ioutil.WriteFile("./"+DIR+"/"+MESSAGE_DIR+"/"+u.Name+".message", file, os.ModePerm)
 	return nil
 }
 
@@ -111,22 +146,21 @@ func (m *User) GetMessage() []string {
 	msgList := make([]string, 0, len(m.MessageList))
 
 	for _, msg := range m.MessageList {
-		if !msg.Load {
-			pubMsg := m.Encrypt(msg.Text)
-			msg.Load = true
-			msgList = append(msgList, pubMsg)
-		}
+		pubMsg := m.Encrypt(msg.Text)
+		msgList = append(msgList, pubMsg)
 	}
 
 	return msgList
 }
 
-func (m *User) AddMessage(text string) {
+func (m *User) AddMessage(text string, myMessage bool) {
 	m.MessageList = append(m.MessageList, &Message{
 		Text:      text,
 		TimeStamp: time.Now(),
+		MyMessage: myMessage,
 	})
 }
+
 func (m *User) Encrypt(secretMessage string) string {
 	label := []byte("")
 	rng := rand.Reader
