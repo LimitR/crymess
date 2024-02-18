@@ -20,6 +20,13 @@ const (
 	SOME_MESSAGE = 0
 )
 
+const (
+	signature = "QAWSEDRFTGYHUJIKOLAZSXDCFVGBHNJM"
+	ivector   = "vector"
+	salt      = "SALT:SDR123"
+	data      = "String Data"
+)
+
 func getPassword() string {
 	if _, err := os.Stat("./etc/hash"); errors.Is(err, os.ErrNotExist) {
 		return ""
@@ -36,6 +43,8 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 
 	column := 0
 
+	validPass := ""
+
 	inputPassword := tview.NewInputField().
 		SetLabel("Enter a password: ").
 		SetFieldWidth(10)
@@ -50,6 +59,7 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 				} else {
 					slicePass := strings.Split(pass, " ")
 					if password.Verify(rawPass, slicePass[0], slicePass[1], nil) {
+						validPass = rawPass
 						pages.SwitchToPage("main")
 					} else {
 						app.Stop()
@@ -81,9 +91,11 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 				for _, msg := range usr.MessageList {
 					column += 1
 					if msg.MyMessage {
-						tableMessage.SetCell(column, MY_MESSAGE, tview.NewTableCell(msg.Text))
+						text, _ := password.DecryptString(msg.Text, validPass)
+						tableMessage.SetCell(column, MY_MESSAGE, tview.NewTableCell(string(text)))
 					} else {
-						tableMessage.SetCell(column, SOME_MESSAGE, tview.NewTableCell(msg.Text))
+						text, _ := password.DecryptString(msg.Text, validPass)
+						tableMessage.SetCell(column, SOME_MESSAGE, tview.NewTableCell(string(text)))
 					}
 				}
 			})
@@ -141,9 +153,15 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 		if userPress != "" {
 			msg := inputText.GetText()
 			usr := userManager.UserList[userPress]
+
+			cryptoMsg, err := password.EncryptString(msg, validPass)
+			if err != nil {
+				panic(err)
+			}
+
 			newMsg := usr.Encrypt(msg)
-			usr.AddMessage(msg, true)
 			clipboard.Write(clipboard.FmtText, []byte(newMsg))
+			usr.AddMessage(cryptoMsg, true)
 
 			inputText.SetText("", true)
 			column += 1
@@ -157,7 +175,13 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 			column += 1
 			newMsg := manager.Decrypt(msg)
 			usr := userManager.UserList[userPress]
-			usr.AddMessage(newMsg, false)
+
+			cryptoMsg, err := password.EncryptString(newMsg, validPass)
+			if err != nil {
+				panic(err)
+			}
+
+			usr.AddMessage(cryptoMsg, false)
 			tableMessage.SetCell(column, SOME_MESSAGE, tview.NewTableCell(userPress+": "+newMsg))
 			tableMessage.Draw(tcell.NewSimulationScreen(""))
 		}
