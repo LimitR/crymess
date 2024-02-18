@@ -16,6 +16,12 @@ type UserManager struct {
 	UserList map[string]User
 }
 
+func NewUserManager() *UserManager {
+	return &UserManager{
+		UserList: make(map[string]User),
+	}
+}
+
 func (u *UserManager) GetNameList() []string {
 	res := make([]string, 0, 10)
 
@@ -52,12 +58,12 @@ func (u *UserManager) Load() error {
 
 	for _, file := range dirPub {
 		name := strings.Split(file.Name(), ".")[0]
-		bFile, err := ioutil.ReadFile("./" + DIR + "/" + USER_PUB_DIR + file.Name())
+		bFile, err := ioutil.ReadFile("./" + DIR + "/" + USER_PUB_DIR + "/" + file.Name())
 		if err != nil {
-			return err
+			panic(err)
 		}
-		user := NewUser(name)
-		user.load(bFile)
+
+		user := NewUser(name, string(bFile))
 
 		user.loadMessage("./" + DIR + "/" + MESSAGE_DIR + "/" + name + ".message")
 

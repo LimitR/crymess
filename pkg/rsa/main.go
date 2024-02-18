@@ -3,7 +3,7 @@ package manager
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
@@ -22,20 +22,22 @@ func OptionString(s string) *string {
 	return &s
 }
 
-func NewManagerRSA(pathToPrivateKey *string) ManagerRSA {
+func NewManagerRSA(pathToPrivateKey *string) *ManagerRSA {
 	if pathToPrivateKey == nil {
 		privateKey, _ := rsa.GenerateKey(rand.Reader, 4096)
-		return ManagerRSA{
+		m := &ManagerRSA{
 			privateKey: privateKey,
 			publicKey:  privateKey.PublicKey,
 		}
+		m.Save()
+		return m
 	} else {
 		m := ManagerRSA{}
 		err := m.load(*pathToPrivateKey)
 		if err != nil {
 			panic(err)
 		}
-		return m
+		return &m
 	}
 }
 
@@ -63,7 +65,7 @@ func (m *ManagerRSA) load(pathToPrivateKey string) error {
 func (m *ManagerRSA) Encrypt(secretMessage string) string {
 	label := []byte("")
 	rng := rand.Reader
-	ciphertext, _ := rsa.EncryptOAEP(sha256.New(), rng, &m.publicKey, []byte(secretMessage), label)
+	ciphertext, _ := rsa.EncryptOAEP(sha512.New(), rng, &m.publicKey, []byte(secretMessage), label)
 	return base64.StdEncoding.EncodeToString(ciphertext)
 }
 
@@ -71,8 +73,16 @@ func (m *ManagerRSA) Decrypt(cipherText string) string {
 	ct, _ := base64.StdEncoding.DecodeString(cipherText)
 	label := []byte("")
 	rng := rand.Reader
-	plaintext, _ := rsa.DecryptOAEP(sha256.New(), rng, m.privateKey, ct, label)
+	plaintext, _ := rsa.DecryptOAEP(sha512.New(), rng, m.privateKey, ct, label)
 	return string(plaintext)
+}
+
+func (m *ManagerRSA) GetPublicKey() []byte {
+	f, err := ioutil.ReadFile("./etc/public.pub")
+	if err != nil {
+		panic(err)
+	}
+	return f
 }
 
 func (m *ManagerRSA) Save() {
@@ -81,7 +91,7 @@ func (m *ManagerRSA) Save() {
 }
 
 func savePEMKey(fileName string, key *rsa.PrivateKey) {
-	outFile, err := os.Create(fileName)
+	outFile, err := os.Create("./etc/" + fileName)
 	checkError(err)
 	defer outFile.Close()
 
@@ -103,8 +113,13 @@ func savePublicPEMKey(fileName string, pubkey rsa.PublicKey) {
 		Bytes: asn1Bytes,
 	}
 
-	pemfile, err := os.Create(fileName)
-	checkError(err)
+	pemfile, err := os.Create("./etc/" + fileName)
+	if err != nil {
+		if err = os.Mkdir("./etc/", os.ModePerm); err != nil {
+			panic(err)
+		}
+		pemfile, _ = os.Create("./etc/" + fileName)
+	}
 	defer pemfile.Close()
 
 	err = pem.Encode(pemfile, pemkey)

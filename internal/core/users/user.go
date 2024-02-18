@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/pem"
+	"io/ioutil"
 	"os"
 	"time"
 )
@@ -27,10 +28,19 @@ type User struct {
 	PubKey       rsa.PublicKey
 }
 
-func NewUser(name string) User {
-	return User{
+func NewUser(name string, pubKey string) User {
+	ioutil.WriteFile("./"+DIR+"/"+USER_PUB_DIR+"/"+name+".pub", []byte(pubKey), os.ModePerm)
+	u := User{
 		Name: name,
 	}
+	block, _ := pem.Decode([]byte(pubKey))
+	pub, err := x509.ParsePKCS1PublicKey(block.Bytes)
+	if err != nil {
+		panic(err)
+	}
+
+	u.PubKey = *pub
+	return u
 }
 
 func (u *User) load(file []byte) {
@@ -46,7 +56,8 @@ func (u *User) load(file []byte) {
 func (u *User) loadMessage(filePath string) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		panic(err)
+		ioutil.WriteFile(filePath, []byte{}, os.ModePerm)
+		return
 	}
 	defer file.Close()
 
@@ -101,7 +112,7 @@ func (m *User) GetMessage() []string {
 
 	for _, msg := range m.MessageList {
 		if !msg.Load {
-			pubMsg := m.encrypt(msg.Text)
+			pubMsg := m.Encrypt(msg.Text)
 			msg.Load = true
 			msgList = append(msgList, pubMsg)
 		}
@@ -116,10 +127,10 @@ func (m *User) AddMessage(text string) {
 		TimeStamp: time.Now(),
 	})
 }
-
-func (m *User) encrypt(secretMessage string) string {
+func (m *User) Encrypt(secretMessage string) string {
 	label := []byte("")
 	rng := rand.Reader
-	ciphertext, _ := rsa.EncryptOAEP(sha256.New(), rng, &m.PubKey, []byte(secretMessage), label)
+	ciphertext, _ := rsa.EncryptOAEP(sha512.New(), rng, &m.PubKey, []byte(secretMessage), label)
+
 	return base64.StdEncoding.EncodeToString(ciphertext)
 }
