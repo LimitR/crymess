@@ -83,18 +83,25 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 	if len(userManager.UserList) != 0 {
 		for _, user := range userManager.UserList {
 			n := user.Name
-			listUser.AddItem(n, "", 20, func() {
+			listUser.AddItem(user.Name, "", 20, func() {
 				lableUserName.SetText(n)
 				userPress = n
 				usr := userManager.UserList[userPress]
 				column = 0
+				tableMessage.Clear()
 				for _, msg := range usr.MessageList {
 					column += 1
 					if msg.MyMessage {
-						text, _ := password.DecryptString(msg.Text, validPass)
+						text, err := password.DecryptString(msg.Text, validPass)
+						if err != nil {
+							panic(err)
+						}
 						tableMessage.SetCell(column, MY_MESSAGE, tview.NewTableCell(string(text)))
 					} else {
-						text, _ := password.DecryptString(msg.Text, validPass)
+						text, err := password.DecryptString(msg.Text, validPass)
+						if err != nil {
+							panic(err)
+						}
 						tableMessage.SetCell(column, SOME_MESSAGE, tview.NewTableCell(string(text)))
 					}
 				}
@@ -118,11 +125,13 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 			if nameUser != "" && pubKey != "" {
 				u := users.NewUser(nameUser, pubKey)
 				userManager.UserList[nameUser] = &u
-				go func() {
-					u.Save()
-				}()
+				err := u.Save()
+				if err != nil {
+					panic(err)
+				}
 				listUser.AddItem(nameUser, "", 20, func() {
 					lableUserName.SetText(nameUser)
+					userPress = nameUser
 				})
 				pages.SwitchToPage("main")
 			}
@@ -166,6 +175,8 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 			inputText.SetText("", true)
 			column += 1
 			tableMessage.SetCell(column, MY_MESSAGE, tview.NewTableCell(msg))
+		} else {
+			panic("AAAAAAAA")
 		}
 	})
 	btnCrypto.SetSelectedFunc(func() {
@@ -184,6 +195,8 @@ func RunUI(manager *manager.ManagerRSA, userManager *users.UserManager) {
 			usr.AddMessage(cryptoMsg, false)
 			tableMessage.SetCell(column, SOME_MESSAGE, tview.NewTableCell(userPress+": "+newMsg))
 			tableMessage.Draw(tcell.NewSimulationScreen(""))
+		} else {
+			panic("AAAAAAAA")
 		}
 	})
 

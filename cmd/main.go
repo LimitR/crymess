@@ -14,10 +14,18 @@ import (
 func main() {
 
 	var managers *manager.ManagerRSA
-	if _, err := os.Stat("./etc/private"); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat("./etc"); errors.Is(err, os.ErrNotExist) {
+		if err = os.Mkdir("./etc", os.ModePerm); err != nil {
+			panic(err)
+		}
 		managers = manager.NewManagerRSA(nil)
 	} else {
-		managers = manager.NewManagerRSA(manager.OptionString("./etc/private"))
+		if _, err := os.Stat("./etc/private"); errors.Is(err, os.ErrNotExist) {
+			fmt.Println(err)
+			managers = manager.NewManagerRSA(nil)
+		} else {
+			managers = manager.NewManagerRSA(manager.OptionString("./etc/private"))
+		}
 	}
 
 	userManager := users.NewUserManager()
@@ -38,7 +46,12 @@ func main() {
 		fmt.Println(err)
 	}()
 
-	defer userManager.Save()
+	defer func() {
+		e := userManager.Save()
+		if e != nil {
+			panic(e)
+		}
+	}()
 
 	ui.RunUI(managers, userManager)
 }

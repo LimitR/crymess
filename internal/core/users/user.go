@@ -9,6 +9,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -28,13 +29,18 @@ type User struct {
 	PasswordHash  string
 	MessageList   []*Message
 	MyMessageList []*Message
-	PubKey        rsa.PublicKey
+	PubKey        *rsa.PublicKey
 }
 
 func NewUser(name string, pubKey string) User {
-	ioutil.WriteFile("./"+DIR+"/"+USER_PUB_DIR+"/"+name+".pub", []byte(pubKey), os.ModePerm)
+	err := ioutil.WriteFile("./"+DIR+"/"+USER_PUB_DIR+"/"+name+".pub", []byte(pubKey), 0777)
+	if err != nil {
+		panic(err)
+	}
 	u := User{
-		Name: name,
+		Name:          name,
+		MessageList:   make([]*Message, 0, 10),
+		MyMessageList: make([]*Message, 0, 10),
 	}
 	block, _ := pem.Decode([]byte(pubKey))
 	pub, err := x509.ParsePKCS1PublicKey(block.Bytes)
@@ -42,7 +48,7 @@ func NewUser(name string, pubKey string) User {
 		panic(err)
 	}
 
-	u.PubKey = *pub
+	u.PubKey = pub
 	return u
 }
 
@@ -53,13 +59,13 @@ func (u *User) load(file []byte) {
 		panic(err)
 	}
 
-	u.PubKey = *pubKey
+	u.PubKey = pubKey
 }
 
 func (u *User) loadMessage(filePath string) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		ioutil.WriteFile(filePath, []byte{}, os.ModePerm)
+		ioutil.WriteFile(filePath, []byte{}, 0777)
 		return
 	}
 	defer file.Close()
@@ -101,7 +107,7 @@ func getNormalString(txt []string) string {
 }
 
 func (u *User) Save() error {
-	asn1Bytes, err := asn1.Marshal(u.PubKey)
+	asn1Bytes, err := asn1.Marshal(*u.PubKey)
 	if err != nil {
 		return err
 	}
@@ -122,6 +128,14 @@ func (u *User) Save() error {
 		return err
 	}
 
+	if _, err := os.Stat("./" + DIR + "/" + MESSAGE_DIR); errors.Is(err, os.ErrNotExist) {
+		os.Mkdir("./"+DIR+"/"+MESSAGE_DIR, 0777)
+	}
+
+	if _, err := os.Stat("./" + DIR + "/" + MESSAGE_DIR + "/" + u.Name + ".message"); errors.Is(err, os.ErrNotExist) {
+		os.Create("./" + DIR + "/" + MESSAGE_DIR + "/" + u.Name + ".message")
+	}
+
 	file := []byte{}
 
 	for _, msg := range u.MessageList {
@@ -138,8 +152,9 @@ func (u *User) Save() error {
 		file = append(file, []byte("\n")...)
 	}
 
-	ioutil.WriteFile("./"+DIR+"/"+MESSAGE_DIR+"/"+u.Name+".message", file, os.ModePerm)
-	return nil
+	err = ioutil.WriteFile("./"+DIR+"/"+MESSAGE_DIR+"/"+u.Name+".message", file, 0777)
+
+	return err
 }
 
 func (m *User) GetMessage() []string {
@@ -162,9 +177,12 @@ func (m *User) AddMessage(text string, myMessage bool) {
 }
 
 func (m *User) Encrypt(secretMessage string) string {
+	if m.PubKey == nil {
+		panic("PubKey not found")
+	}
 	label := []byte("")
 	rng := rand.Reader
-	ciphertext, _ := rsa.EncryptOAEP(sha512.New(), rng, &m.PubKey, []byte(secretMessage), label)
+	ciphertext, _ := rsa.EncryptOAEP(sha512.New(), rng, m.PubKey, []byte(secretMessage), label)
 
 	return base64.StdEncoding.EncodeToString(ciphertext)
 }
